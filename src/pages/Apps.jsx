@@ -134,7 +134,9 @@ export function Apps({ data, pushToast, isActive }) {
 
       const apps = cached.apps || [];
       const age = cached.lastScan ? Date.now() - cached.lastScan : Infinity;
-      const needsScan = apps.length === 0 || age > 6 * 60 * 60 * 1000;
+      const nameKeys = new Set(apps.map((a) => (a.name || '').toLowerCase().trim()));
+      const dupRatio = apps.length > 0 && nameKeys.size / apps.length < 0.72;
+      const needsScan = apps.length === 0 || age > 6 * 60 * 60 * 1000 || dupRatio;
 
       if (!needsScan) return;
 
@@ -145,7 +147,7 @@ export function Apps({ data, pushToast, isActive }) {
       }, 400);
 
       try {
-        const next = await getJarvis().scanApps({ full: false });
+        const next = await getJarvis().scanApps({ full: dupRatio || apps.length === 0 });
         if (alive) setStore(next);
       } catch (e) {
         pushToast(String(e?.message || e || 'Scan failed'), 'error');

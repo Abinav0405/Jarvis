@@ -4,6 +4,8 @@ import { getJarvis } from '@/jarvis-bridge.js';
 
 const R = 52;
 const C = 2 * Math.PI * R;
+const TRACK = 'rgba(255, 255, 255, 0.07)';
+const RING = 'rgba(110, 125, 138, 0.72)';
 
 function formatClock(sec) {
   const s = Math.max(0, Math.ceil(sec));
@@ -13,11 +15,11 @@ function formatClock(sec) {
 }
 
 /**
- * Apple-style focus timer with circular progress ring, custom duration, pause/stop/clear.
+ * Apple-style focus timer — muted ring shrinks as time runs out.
  */
 export function FocusTimer({ data, refresh, pushToast }) {
   const end = Number(data.settings?.focusTimerEnd) || 0;
-  const totalSec = Math.max(1, Number(data.settings?.focusTimerTotalSec) || 0);
+  const totalSec = Math.max(0, Number(data.settings?.focusTimerTotalSec) || 0);
   const pausedRemaining = Number(data.settings?.focusTimerPausedRemaining) || 0;
   const isPaused = pausedRemaining > 0 && !end;
 
@@ -57,19 +59,19 @@ export function FocusTimer({ data, refresh, pushToast }) {
       }
     };
     tick();
-    const id = setInterval(tick, 250);
+    const id = setInterval(tick, 200);
     return () => clearInterval(id);
   }, [end, isPaused, pausedRemaining, patchTimer, pushToast]);
 
-  const active = isPaused || (end > Date.now() && remaining > 0);
-  const progress = useMemo(() => {
-    if (!totalSec) return 0;
-    const left = isPaused ? pausedRemaining : remaining;
-    return Math.min(1, Math.max(0, 1 - left / totalSec));
-  }, [totalSec, remaining, pausedRemaining, isPaused]);
+  const running = isPaused || (end > Date.now() && remaining > 0);
+  const leftSec = running ? (isPaused ? pausedRemaining : remaining) : 0;
 
-  const ringOffset = C * (1 - progress);
-  const hue = Math.round(200 - progress * 140);
+  const remainingFrac = useMemo(() => {
+    if (!running || totalSec <= 0) return 1;
+    return Math.min(1, Math.max(0, leftSec / totalSec));
+  }, [running, totalSec, leftSec]);
+
+  const ringOffset = C * (1 - remainingFrac);
 
   const start = async (mins) => {
     const m = Math.max(1, Math.min(480, Number(mins) || 25));
@@ -106,44 +108,44 @@ export function FocusTimer({ data, refresh, pushToast }) {
     pushToast?.('Focus timer cleared.', 'info');
   };
 
-  const displaySec = isPaused ? pausedRemaining : remaining;
-
   return (
     <div className="flex flex-col items-center">
       <div className="relative h-[140px] w-[140px]">
         <svg className="h-full w-full -rotate-90" viewBox="0 0 120 120" aria-hidden>
-          <circle cx="60" cy="60" r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
-          <circle
-            cx="60"
-            cy="60"
-            r={R}
-            fill="none"
-            stroke={`hsl(${hue} 85% 55%)`}
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={C}
-            strokeDashoffset={ringOffset}
-            style={{ transition: 'stroke-dashoffset 0.25s linear, stroke 0.4s ease' }}
-          />
+          <circle cx="60" cy="60" r={R} fill="none" stroke={TRACK} strokeWidth="5" />
+          {running && (
+            <circle
+              cx="60"
+              cy="60"
+              r={R}
+              fill="none"
+              stroke={RING}
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeDasharray={C}
+              strokeDashoffset={ringOffset}
+              style={{ transition: 'stroke-dashoffset 0.2s linear' }}
+            />
+          )}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <p className="font-mono text-2xl font-light tracking-tight text-[var(--accent)]">
-            {active ? formatClock(displaySec) : '0:00'}
+          <p className="font-mono text-2xl font-light tracking-tight text-[rgba(220,225,230,0.88)]">
+            {running ? formatClock(leftSec) : '0:00'}
           </p>
-          {active && (
-            <p className="mt-0.5 text-[9px] uppercase tracking-wider text-[rgba(240,240,240,0.35)]">
+          {running && (
+            <p className="mt-0.5 text-[9px] uppercase tracking-wider text-[rgba(240,240,240,0.32)]">
               {isPaused ? 'Paused' : 'Focus'}
             </p>
           )}
         </div>
       </div>
 
-      {active ? (
+      {running ? (
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           <button
             type="button"
             onClick={() => void (isPaused ? resume() : pause())}
-            className="inline-flex items-center gap-1 rounded-pill border border-[rgba(255,255,255,0.12)] px-3 py-1.5 text-[10px] font-semibold text-[#F0F0F0] hover:border-[var(--accent)]"
+            className="inline-flex items-center gap-1 rounded-pill border border-[rgba(255,255,255,0.1)] px-3 py-1.5 text-[10px] font-semibold text-[rgba(240,240,240,0.7)] hover:border-[rgba(255,255,255,0.22)]"
           >
             {isPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
             {isPaused ? 'Resume' : 'Pause'}
@@ -151,7 +153,7 @@ export function FocusTimer({ data, refresh, pushToast }) {
           <button
             type="button"
             onClick={() => void stop()}
-            className="inline-flex items-center gap-1 rounded-pill border border-[rgba(255,255,255,0.12)] px-3 py-1.5 text-[10px] font-semibold text-[#F0F0F0] hover:border-rose-400/50"
+            className="inline-flex items-center gap-1 rounded-pill border border-[rgba(255,255,255,0.1)] px-3 py-1.5 text-[10px] font-semibold text-[rgba(240,240,240,0.7)] hover:border-[rgba(255,255,255,0.22)]"
           >
             <Square className="h-3 w-3" /> Stop
           </button>
@@ -165,14 +167,14 @@ export function FocusTimer({ data, refresh, pushToast }) {
               max={480}
               value={customMin}
               onChange={(e) => setCustomMin(e.target.value)}
-              className="w-16 rounded-btn border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.04)] px-2 py-1.5 text-center font-mono text-sm text-[#F0F0F0] outline-none focus:border-[var(--accent)]"
+              className="w-16 rounded-btn border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-2 py-1.5 text-center font-mono text-sm text-[rgba(240,240,240,0.75)] outline-none focus:border-[rgba(255,255,255,0.2)]"
               aria-label="Minutes"
             />
-            <span className="text-[10px] text-[rgba(240,240,240,0.45)]">min</span>
+            <span className="text-[10px] text-[rgba(240,240,240,0.38)]">min</span>
             <button
               type="button"
               onClick={() => void start(customMin)}
-              className="ml-auto inline-flex items-center gap-1 rounded-pill border border-[var(--accent)]/40 bg-[rgba(0,212,255,0.12)] px-3 py-1.5 text-[10px] font-semibold text-[var(--accent)]"
+              className="ml-auto inline-flex items-center gap-1 rounded-pill border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[10px] font-semibold text-[rgba(240,240,240,0.75)] hover:bg-[rgba(255,255,255,0.07)]"
             >
               <Play className="h-3 w-3" /> Start
             </button>
@@ -183,7 +185,7 @@ export function FocusTimer({ data, refresh, pushToast }) {
                 key={m}
                 type="button"
                 onClick={() => void start(m)}
-                className="rounded-pill border border-[rgba(255,255,255,0.1)] px-2.5 py-1 text-[10px] font-semibold text-[#F0F0F0] hover:border-[var(--accent)]"
+                className="rounded-pill border border-[rgba(255,255,255,0.08)] px-2.5 py-1 text-[10px] font-semibold text-[rgba(240,240,240,0.6)] hover:border-[rgba(255,255,255,0.18)]"
               >
                 {m}m
               </button>
@@ -192,11 +194,11 @@ export function FocusTimer({ data, refresh, pushToast }) {
         </>
       )}
 
-      {active && (
+      {running && (
         <button
           type="button"
           onClick={() => void stop()}
-          className="mt-2 inline-flex items-center gap-1 text-[9px] text-[rgba(240,240,240,0.4)] hover:text-[var(--accent)]"
+          className="mt-2 inline-flex items-center gap-1 text-[9px] text-[rgba(240,240,240,0.35)] hover:text-[rgba(240,240,240,0.55)]"
         >
           <RotateCcw className="h-3 w-3" /> Clear timer
         </button>

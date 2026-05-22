@@ -19,7 +19,7 @@ export function AppIconTile({ name, iconPng, className = 'h-12 w-12', rounded = 
         <img
           src={iconPng}
           alt=""
-          className="h-full w-full object-cover object-center"
+          className="h-full w-full object-contain object-center"
           draggable={false}
           onError={() => setImgBroken(true)}
         />

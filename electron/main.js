@@ -457,9 +457,14 @@ function writeAppsStoreSync(store) {
 }
 
 function mergeScanStats(newApps, oldStore) {
+  const { normPath } = require('./scan-windows-apps');
   const oldById = new Map((oldStore.apps || []).map((a) => [a.id, a]));
+  const oldByPath = new Map();
+  for (const a of oldStore.apps || []) {
+    if (a.launchPath) oldByPath.set(normPath(a.launchPath), a);
+  }
   return newApps.map((a) => {
-    const prev = oldById.get(a.id);
+    const prev = oldById.get(a.id) || oldByPath.get(normPath(a.launchPath));
     return {
       ...a,
       iconPng: a.iconPng || prev?.iconPng || '',
@@ -1180,14 +1185,19 @@ jarvisIpc.register('apps:get', () => readAppsStoreSync());
 jarvisIpc.register('apps:scan', async (_e, opts = {}) => {
   const old = readAppsStoreSync();
   const includeRegistry = opts?.full === true;
+  const { normPath } = require('./scan-windows-apps');
   const iconById = new Map(
     (old.apps || []).filter((a) => a.iconPng).map((a) => [a.id, a.iconPng])
+  );
+  const iconByPath = new Map(
+    (old.apps || []).filter((a) => a.iconPng && a.launchPath).map((a) => [normPath(a.launchPath), a.iconPng])
   );
   let lastBroadcast = 0;
   const scanned = await scanWindowsApps(app, {
     includeRegistry,
     iconConcurrency: 12,
     iconById,
+    iconByPath,
     onChunk: (partialApps) => {
       const merged = mergeScanStats(partialApps, old);
       const now = Date.now();

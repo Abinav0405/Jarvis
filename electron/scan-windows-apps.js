@@ -11,6 +11,12 @@ function stableId(launchPath) {
   return crypto.createHash('sha256').update(String(launchPath).toLowerCase()).digest('hex').slice(0, 16);
 }
 
+function normPath(p) {
+  return String(p || '')
+    .toLowerCase()
+    .replace(/\//g, '\\');
+}
+
 function walkLnks(root, acc) {
   if (!root || !fs.existsSync(root)) return;
   let entries;
@@ -39,6 +45,12 @@ function shortcutRoots() {
     path.join(home, 'AppData', 'Roaming', 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar'),
   ];
   return [...new Set(roots.filter(Boolean))];
+}
+
+function listStartMenuLnks() {
+  const acc = [];
+  for (const root of shortcutRoots()) walkLnks(root, acc);
+  return acc;
 }
 
 async function registryExeApps() {
@@ -120,36 +132,100 @@ try {
   }
 }
 
-function buildAppIndex() {
-  const lnkList = [];
-  for (const root of shortcutRoots()) walkLnks(root, lnkList);
+/** Resolve .lnk → target exe + icon path (temp JSON file — reliable on Windows paths). */
+async function resolveShortcutsBatch(lnkPaths) {
+  const map = new Map();
+  if (!lnkPaths.length) return map;
 
-  const byKey = new Map();
-
-  for (const lnk of lnkList) {
-    const key = lnk.toLowerCase();
-    const name = path.basename(lnk, '.lnk');
-    byKey.set(key, {
-      id: stableId(lnk),
-      name,
-      launchPath: lnk,
-    });
+  const tmp = path.join(os.tmpdir(), `jarvis-lnks-${process.pid}-${Date.now()}.json`);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(lnkPaths), 'utf8');
+    const ps = `
+$ErrorActionPreference = 'SilentlyContinue'
+$paths = Get-Content -LiteralPath '${tmp.replace(/'/g, "''")}' -Raw | ConvertFrom-Json
+$sh = New-Object -ComObject WScript.Shell
+$out = @{}
+foreach ($p in $paths) {
+  try {
+    $sc = $sh.CreateShortcut($p)
+    if ($sc.TargetPath) {
+      $icon = $sc.IconLocation
+      if (-not $icon) { $icon = $sc.TargetPath }
+      $out[$p] = @{ target = [string]$sc.TargetPath; icon = [string]$icon }
+    }
+  } catch {}
+}
+$out | ConvertTo-Json -Compress -Depth 4
+`.trim();
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+      { maxBuffer: 12 * 1024 * 1024, windowsHide: true, timeout: 90000 }
+    );
+    const t = (stdout || '').trim();
+    if (t) {
+      const parsed = JSON.parse(t);
+      if (parsed && typeof parsed === 'object') {
+        for (const [lnk, info] of Object.entries(parsed)) {
+          if (!lnk || !info) continue;
+          const target = info.target || info.Target;
+          if (!target) continue;
+          map.set(String(lnk), {
+            target: String(target),
+            iconPath: String(info.icon || info.Icon || target),
+          });
+        }
+      }
+    }
+  } catch {
+    /* batch failed */
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      /* */
+    }
   }
-
-  return { byKey, lnkCount: lnkList.length };
+  return map;
 }
 
-function mergeRowsIntoIndex(byKey, regList, uwpList) {
+function parseIconPath(iconLoc) {
+  const raw = String(iconLoc || '').trim().replace(/^"+|"+$/g, '');
+  if (!raw) return null;
+  const comma = raw.lastIndexOf(',');
+  if (comma > 2) {
+    const tail = raw.slice(comma + 1).trim();
+    const head = raw.slice(0, comma).trim().replace(/^"+|"+$/g, '');
+    if (/^\d+$/.test(tail) && head) return head;
+  }
+  return raw;
+}
+
+function upsertApp(apps, key, entry) {
+  const k = normPath(key);
+  if (!k) return;
+  const existing = apps.get(k);
+  if (!existing) {
+    apps.set(k, entry);
+    return;
+  }
+  if ((entry.name || '').length > (existing.name || '').length) {
+    apps.set(k, { ...existing, name: entry.name, iconHint: entry.iconHint || existing.iconHint });
+  }
+}
+
+function buildAppCatalog(regList, uwpList, lnkPaths, resolveMap) {
+  const apps = new Map();
+
   for (const row of regList) {
     const p = row.Path || row.path;
     const n = row.Name || row.name;
-    if (!p || !n) continue;
-    const key = String(p).toLowerCase();
-    if (byKey.has(key)) continue;
-    byKey.set(key, {
+    if (!p || !n || !fs.existsSync(p)) continue;
+    upsertApp(apps, p, {
       id: stableId(p),
       name: String(n).trim(),
       launchPath: p,
+      iconHint: p,
     });
   }
 
@@ -158,136 +234,103 @@ function mergeRowsIntoIndex(byKey, regList, uwpList) {
     const n = row.Name || row.name;
     if (!id || !n) continue;
     const launchPath = `uwp:${id}`;
-    const key = launchPath.toLowerCase();
-    if (byKey.has(key)) continue;
-    byKey.set(key, {
+    upsertApp(apps, launchPath, {
       id: stableId(launchPath),
       name: String(n).trim(),
       launchPath,
+      iconHint: launchPath,
     });
   }
 
-  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  for (const lnk of lnkPaths) {
+    const info = resolveMap.get(lnk);
+    if (!info?.target || !fs.existsSync(info.target)) continue;
+    const target = info.target;
+    const key = normPath(target);
+    if (apps.has(key)) continue;
+    const name = path.basename(lnk, '.lnk');
+    upsertApp(apps, target, {
+      id: stableId(target),
+      name,
+      launchPath: target,
+      iconHint: parseIconPath(info.iconPath) || target,
+    });
+  }
+
+  return [...apps.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
-/** Resolve .lnk → target exe (batch) so icons and dedupe use real paths. */
-async function resolveShortcutsBatch(lnkPaths) {
-  const map = new Map();
-  if (!lnkPaths.length) return map;
-  const chunkSize = 180;
-  for (let i = 0; i < lnkPaths.length; i += chunkSize) {
-    const chunk = lnkPaths.slice(i, i + chunkSize);
-    const json = JSON.stringify(chunk);
-    const ps = `
-$ErrorActionPreference = 'SilentlyContinue'
-$paths = '${json.replace(/'/g, "''")}' | ConvertFrom-Json
-$sh = New-Object -ComObject WScript.Shell
-$out = @{}
-foreach ($p in $paths) {
+async function loadIconFromPath(electronApp, filePath) {
+  const p = parseIconPath(filePath);
+  if (!p || !fs.existsSync(p)) return '';
   try {
-    $sc = $sh.CreateShortcut($p)
-    if ($sc.TargetPath) { $out[$p] = $sc.TargetPath }
-  } catch {}
-}
-$out | ConvertTo-Json -Compress
-`.trim();
-    try {
-      const { stdout } = await execFileAsync(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-        { maxBuffer: 8 * 1024 * 1024, windowsHide: true, timeout: 60000 }
-      );
-      const t = (stdout || '').trim();
-      if (!t) continue;
-      const parsed = JSON.parse(t);
-      if (parsed && typeof parsed === 'object') {
-        for (const [lnk, target] of Object.entries(parsed)) {
-          if (lnk && target) map.set(String(lnk), String(target));
-        }
-      }
-    } catch {
-      /* skip chunk */
+    if (/\.ico$/i.test(p)) {
+      const { nativeImage } = require('electron');
+      const img = nativeImage.createFromPath(p);
+      if (img && !img.isEmpty()) return img.resize({ width: 64, height: 64 }).toDataURL();
     }
-  }
-  return map;
-}
-
-function dedupeApps(list, resolveMap) {
-  const byKey = new Map();
-  for (const app of list) {
-    let target = app.launchPath;
-    if (target.toLowerCase().endsWith('.lnk')) {
-      target = resolveMap.get(target) || target;
-    }
-    const key = `${String(app.name).toLowerCase().trim()}|${String(target).toLowerCase()}`;
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, app);
-      continue;
-    }
-    const preferNew =
-      existing.launchPath.toLowerCase().endsWith('.lnk') && !app.launchPath.toLowerCase().endsWith('.lnk');
-    if (preferNew) byKey.set(key, app);
-  }
-  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-}
-
-function iconSourcePath(entry, resolveMap) {
-  const lp = entry.launchPath;
-  if (lp.startsWith('uwp:')) return lp;
-  if (lp.toLowerCase().endsWith('.lnk')) {
-    const resolved = resolveMap.get(lp);
-    if (resolved && fs.existsSync(resolved)) return resolved;
-  }
-  return lp;
-}
-
-async function fetchIcon(electronApp, entry, resolveMap) {
-  try {
-    if (entry.launchPath.startsWith('uwp:')) {
-      const appId = entry.launchPath.slice(4);
-      const shellPath = `shell:AppsFolder\\${appId}`;
-      const img = await electronApp.getFileIcon(shellPath, { size: 'large' });
-      if (!img.isEmpty()) return img.toDataURL();
-      return '';
-    }
-    const src = iconSourcePath(entry, resolveMap);
-    const img = await electronApp.getFileIcon(src, { size: 'large' });
+    const img = await electronApp.getFileIcon(p, { size: 'large' });
     if (!img.isEmpty()) return img.toDataURL();
-    if (src !== entry.launchPath) {
-      const fallback = await electronApp.getFileIcon(entry.launchPath, { size: 'large' });
-      if (!fallback.isEmpty()) return fallback.toDataURL();
-    }
   } catch {
     /* */
   }
   return '';
 }
 
+async function fetchIcon(electronApp, entry) {
+  const hints = [];
+  if (entry.iconHint) hints.push(entry.iconHint);
+  if (entry.launchPath.startsWith('uwp:')) {
+    const appId = entry.launchPath.slice(4);
+    hints.push(`shell:AppsFolder\\${appId}`);
+  } else {
+    hints.push(entry.launchPath);
+  }
+
+  for (const hint of hints) {
+    if (hint.startsWith('uwp:') || hint.startsWith('shell:')) {
+      try {
+        const shellPath = hint.startsWith('shell:') ? hint : `shell:AppsFolder\\${hint.slice(4)}`;
+        const img = await electronApp.getFileIcon(shellPath, { size: 'large' });
+        if (!img.isEmpty()) return img.toDataURL();
+      } catch {
+        /* */
+      }
+      continue;
+    }
+    const data = await loadIconFromPath(electronApp, hint);
+    if (data) return data;
+  }
+  return '';
+}
+
 /**
  * @param {{ getFileIcon: (p: string, o?: object) => Promise<import('electron').NativeImage> }} electronApp
- * @param {{ onChunk?: (apps: object[]) => void, iconConcurrency?: number, includeRegistry?: boolean, iconById?: Map<string, string> }} opts
+ * @param {{ onChunk?: (apps: object[]) => void, iconConcurrency?: number, includeRegistry?: boolean, iconById?: Map<string, string>, iconByPath?: Map<string, string> }} opts
  */
 async function scanWindowsApps(electronApp, opts = {}) {
   const onChunk = opts.onChunk;
   const iconById = opts.iconById || new Map();
+  const iconByPath = opts.iconByPath || new Map();
   const concurrency = Math.max(4, Math.min(16, opts.iconConcurrency ?? 12));
   const includeRegistry = opts.includeRegistry !== false;
 
-  const { byKey } = buildAppIndex();
-
   const regPromise = includeRegistry ? registryExeApps() : Promise.resolve([]);
   const uwpPromise = startMenuUwpApps();
-  const [regList, uwpList] = await Promise.all([regPromise, uwpPromise]);
+  const lnkPaths = listStartMenuLnks();
+  const [regList, uwpList, resolveMap] = await Promise.all([
+    regPromise,
+    uwpPromise,
+    resolveShortcutsBatch(lnkPaths),
+  ]);
 
-  let list = mergeRowsIntoIndex(byKey, regList, uwpList);
-  const lnks = list.filter((e) => e.launchPath.toLowerCase().endsWith('.lnk')).map((e) => e.launchPath);
-  const resolveMap = await resolveShortcutsBatch(lnks);
-  list = dedupeApps(list, resolveMap);
+  const list = buildAppCatalog(regList, uwpList, lnkPaths, resolveMap);
 
   const out = list.map((entry) => ({
-    ...entry,
-    iconPng: iconById.get(entry.id) || '',
+    id: entry.id,
+    name: entry.name,
+    launchPath: entry.launchPath,
+    iconPng: iconById.get(entry.id) || iconByPath.get(normPath(entry.launchPath)) || '',
     launchCount: 0,
     lastLaunched: null,
   }));
@@ -301,12 +344,12 @@ async function scanWindowsApps(electronApp, opts = {}) {
     while (nextIdx < out.length) {
       const i = nextIdx;
       nextIdx += 1;
-      const entry = out[i];
-      if (entry.iconPng) {
+      const entry = { ...list[i], iconHint: list[i].iconHint };
+      if (out[i].iconPng) {
         done += 1;
         continue;
       }
-      const iconPng = await fetchIcon(electronApp, entry, resolveMap);
+      const iconPng = await fetchIcon(electronApp, entry);
       if (iconPng) out[i] = { ...out[i], iconPng };
       done += 1;
       if (onChunk && done % 18 === 0) onChunk(out.slice());
@@ -320,4 +363,4 @@ async function scanWindowsApps(electronApp, opts = {}) {
   return out;
 }
 
-module.exports = { scanWindowsApps, stableId, shortcutRoots };
+module.exports = { scanWindowsApps, stableId, shortcutRoots, normPath };
