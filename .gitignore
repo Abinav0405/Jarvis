@@ -1,0 +1,40 @@
+# Dependencies & build
+node_modules/
+dist/
+release/
+*.log
+
+# OS & env
+.DS_Store
+Thumbs.db
+.env
+.env.*
+
+# Reference / vendored (not part of shipped JARVIS)
+Mark-XXXIX-reference/
+Mark-39/
+mark-39/
+
+# Local runtime data (templates in data/templates/ are committed)
+data/presets.json
+data/apps.json
+data/usage.json
+data/patterns.json
+data/preset-activity.json
+
+# User / dev secrets
+**/GOOGLE_API_KEY.txt
+**/google-calendar.json
+
+# Electron dev userData copies
+*.asar.unpacked
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/

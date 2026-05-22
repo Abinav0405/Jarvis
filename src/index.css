@@ -1,0 +1,418 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+html[data-color-mode='dark'] {
+  --accent: #00d4ff;
+  --accent-secondary: #7c3aed;
+  --accent-glow: rgba(0, 212, 255, 0.35);
+  --font-scale: 1;
+  --space-scale: 1;
+  --panel-bg-alpha: 0.04;
+  --glow-intensity: 0.15;
+  --shadow-glow: 0 0 20px color-mix(in srgb, var(--accent) 15%, transparent);
+  --shadow-glow-strong: 0 0 24px color-mix(in srgb, var(--accent) 20%, transparent);
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-pill: 999px;
+  --bg-app: #090909;
+  --bg-elevated: #080808;
+  --text-primary: #f0f0f0;
+  --text-muted: rgba(240, 240, 240, 0.45);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --code-bg: rgba(0, 0, 0, 0.35);
+  --glass-bg: rgba(255, 255, 255, var(--panel-bg-alpha, 0.04));
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-subtle: rgba(255, 255, 255, 0.07);
+}
+
+html[data-color-mode='light'] {
+  --bg-app: #eef1f6;
+  --bg-elevated: #ffffff;
+  --text-primary: #12151c;
+  --text-muted: rgba(18, 21, 28, 0.55);
+  --border-subtle: rgba(15, 20, 31, 0.1);
+  --code-bg: rgba(15, 20, 31, 0.06);
+  --glass-border-subtle: rgba(15, 20, 31, 0.08);
+}
+
+.rounded-card {
+  border-radius: var(--radius-card);
+}
+
+.rounded-btn {
+  border-radius: var(--radius-btn);
+}
+
+.rounded-pill {
+  border-radius: var(--radius-pill);
+}
+
+.shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+.shadow-glow-strong {
+  box-shadow: var(--shadow-glow-strong);
+}
+
+html[data-ui-density='compact'] {
+  --space-scale: 0.88;
+}
+
+html[data-ui-density='compact'] .rounded-btn {
+  padding-top: calc(0.5rem * var(--space-scale));
+  padding-bottom: calc(0.5rem * var(--space-scale));
+}
+
+html[data-ui-density='compact'] nav.gap-1 {
+  gap: calc(0.2rem * var(--space-scale));
+}
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-force-motion]) *,
+  html:not([data-force-motion]) *::before,
+  html:not([data-force-motion]) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  font-size: calc(16px * var(--font-scale, 1));
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: Inter, system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom cyan glow pointer for interactive targets */
+.jarvis-interactive,
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+a[href],
+input[type='checkbox'],
+input[type='radio'],
+select {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='6' fill='none' stroke='%2300D4FF' stroke-width='2' opacity='0.9'/%3E%3C/svg%3E")
+      12 12,
+    pointer;
+}
+
+.jarvis-input {
+  @apply w-full rounded-btn border px-3 py-2 font-sans outline-none transition-shadow;
+  border-color: var(--border-subtle);
+  background: var(--glass-bg);
+  color: var(--text-primary);
+}
+
+.jarvis-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.65;
+}
+
+.jarvis-input:focus {
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.45), 0 0 16px rgba(0, 212, 255, 0.12);
+  border-color: rgba(0, 212, 255, 0.35);
+}
+
+.jarvis-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    hsl(260 70% 62%) 0%,
+    hsl(260 70% 62%) var(--vol-pct, 50%),
+    rgba(255, 255, 255, 0.12) var(--vol-pct, 50%),
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  outline: none;
+}
+
+.jarvis-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(260 75% 72%);
+  box-shadow: 0 0 8px rgba(160, 140, 255, 0.45);
+  cursor: pointer;
+}
+
+.jarvis-volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: hsl(260 75% 72%);
+  cursor: pointer;
+}
+
+.jarvis-search-field {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.jarvis-search-field:focus-within {
+  border-color: rgba(0, 212, 255, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(0, 212, 255, 0.25),
+    0 0 20px rgba(0, 212, 255, 0.1);
+}
+
+/* Dashboard alpha search — Gemini-style animated glow */
+@keyframes alpha-ring-spin {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes alpha-aura-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+.alpha-search-ring {
+  background: linear-gradient(
+    120deg,
+    rgba(0, 212, 255, 0.35),
+    rgba(124, 58, 237, 0.45),
+    rgba(0, 212, 255, 0.35),
+    rgba(236, 72, 153, 0.3)
+  );
+  background-size: 300% 300%;
+  animation: alpha-ring-spin 6s ease infinite;
+}
+
+.alpha-search-ring--on {
+  animation-duration: 3.5s;
+  filter: brightness(1.15);
+}
+
+.alpha-search-inner {
+  background: rgba(8, 8, 11, 0.94);
+  backdrop-filter: blur(16px);
+}
+
+.alpha-search-aura {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 212, 255, 0.22) 0%,
+    rgba(124, 58, 237, 0.14) 40%,
+    transparent 70%
+  );
+  animation: alpha-aura-pulse 4s ease-in-out infinite;
+}
+
+.alpha-search-aura--on {
+  animation-duration: 2.5s;
+}
+
+.dashboard-preset-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(0, 212, 255, 0.08), transparent 70%);
+  animation: alpha-aura-pulse 5s ease-in-out infinite;
+}
+
+.jarvis-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.jarvis-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.jarvis-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.35);
+  border-radius: 999px;
+}
+
+.jarvis-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.55);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Boot Screen — Gemini-style pulse animation
+   ═══════════════════════════════════════════════════════════════════ */
+
+@keyframes boot-aura-breathe {
+  0%, 100% {
+    opacity: 0.3;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+.boot-aura {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 212, 255, 0.18) 0%,
+    color-mix(in srgb, var(--accent-secondary, #7c3aed) 12%, transparent) 35%,
+    rgba(236, 72, 153, 0.06) 60%,
+    transparent 80%
+  );
+  animation: boot-aura-breathe 3s ease-in-out infinite;
+  filter: blur(40px);
+}
+
+.boot-aura--surge {
+  animation: none;
+  filter: blur(36px);
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--accent) 35%, transparent) 0%,
+    color-mix(in srgb, var(--accent-secondary, #7c3aed) 18%, transparent) 45%,
+    transparent 75%
+  );
+}
+
+.boot-title-surge {
+  filter: drop-shadow(0 0 32px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+
+/* Hologram pulse overlay (preset launch / systems online) */
+.hologram-pulse {
+  mix-blend-mode: screen;
+}
+
+.hologram-pulse--strong .boot-aura {
+  filter: blur(32px);
+}
+
+.hologram-pulse--strong .boot-ring {
+  opacity: 1;
+}
+
+.boot-ring {
+  border: 2px solid transparent;
+  background: linear-gradient(135deg,
+    rgba(0, 212, 255, 0.35),
+    rgba(124, 58, 237, 0.3),
+    rgba(0, 212, 255, 0.2)
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #fff calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #fff calc(100% - 2px));
+}
+
+.boot-orb {
+  background: radial-gradient(
+    circle,
+    rgba(0, 212, 255, 0.15) 0%,
+    rgba(124, 58, 237, 0.1) 50%,
+    transparent 70%
+  );
+  border: 1px solid rgba(0, 212, 255, 0.25);
+}
+
+.boot-orb-inner {
+  background: radial-gradient(
+    circle at 40% 40%,
+    rgba(0, 212, 255, 0.5),
+    rgba(124, 58, 237, 0.35) 50%,
+    rgba(0, 212, 255, 0.15) 100%
+  );
+  box-shadow:
+    0 0 30px rgba(0, 212, 255, 0.4),
+    inset 0 0 20px rgba(0, 212, 255, 0.2);
+}
+
+@keyframes boot-progress-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.boot-progress {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 212, 255, 0.6) 0%,
+    rgba(124, 58, 237, 0.8) 40%,
+    rgba(0, 212, 255, 1) 50%,
+    rgba(124, 58, 237, 0.8) 60%,
+    rgba(0, 212, 255, 0.6) 100%
+  );
+  background-size: 200% 100%;
+  animation: boot-progress-shimmer 2s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Setup Wizard — ambient background glow
+   ═══════════════════════════════════════════════════════════════════ */
+
+@keyframes setup-aura-drift {
+  0%, 100% {
+    opacity: 0.2;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  33% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(1.05) rotate(2deg);
+  }
+  66% {
+    opacity: 0.25;
+    transform: translate(-50%, -50%) scale(0.97) rotate(-1deg);
+  }
+}
+
+.setup-aura {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 212, 255, 0.12) 0%,
+    rgba(124, 58, 237, 0.08) 40%,
+    transparent 70%
+  );
+  animation: setup-aura-drift 6s ease-in-out infinite;
+  filter: blur(50px);
+}

@@ -1,0 +1,113 @@
+================================================================================
+  JARVIS — Installing and setting up on a new Windows PC (64-bit)
+  Created by Mr Arumugam Abinav © All rights reserved
+================================================================================
+
+UNSIGNED BETA BUILD
+  This release is NOT code-signed. Windows SmartScreen may warn that the
+  publisher is unknown. That is expected.
+
+  If SmartScreen appears:
+    1. Click "More info"
+    2. Click "Run anyway"
+
+WHAT YOU NEED
+  • Windows 10 or 11 (64-bit / x64)
+  • Internet (for Gemini voice core and AI Chat cloud APIs)
+  • Microphone (for Dashboard voice core)
+
+WHAT TO COPY FROM THIS FOLDER
+  • important notes/SETUP-NEW-PC.txt  → This guide
+  • important notes/VOICE-CORE.md     → Voice assistant capabilities & speed tips
+  • JARVIS Setup 1.0.0.exe            → Full installer (recommended)
+  • JARVIS 1.0.0.exe                  → Portable (no installer)
+
+--------------------------------------------------------------------------------
+1) INSTALL (PICK ONE)
+--------------------------------------------------------------------------------
+
+  INSTALLER (recommended)
+    1. Double-click "JARVIS Setup 1.0.0.exe".
+    2. SmartScreen: "More info" → "Run anyway" if needed.
+    3. Follow the wizard (optional Ollama for local AI Chat).
+    4. Launch from desktop or Start Menu.
+
+  PORTABLE
+    Copy "JARVIS 1.0.0.exe" anywhere and double-click to run.
+
+--------------------------------------------------------------------------------
+2) FIRST LAUNCH — SETUP WIZARD
+--------------------------------------------------------------------------------
+
+    Step 1: Welcome
+    Step 2: Your name (greeting + how JARVIS addresses you; change later in Settings → General)
+    Step 3: Gemini API key — powers the Dashboard voice core (see VOICE-CORE.md)
+    Step 4: Appearance (theme, accent, font)
+    Step 5: Preferences (startup, weather city, voice language)
+    Step 6: Done
+
+  DATA LOCATION
+    Installed: %AppData%\JARVIS\
+    Dev (npm run dev): %LOCALAPPDATA%\Jarvis-Electron-Dev\
+
+    Key files: presets.json, apps.json, GOOGLE_API_KEY.txt (optional wake word only)
+
+--------------------------------------------------------------------------------
+3) DEVELOP FROM GITHUB
+--------------------------------------------------------------------------------
+
+  1. Install Node.js 20 LTS — https://nodejs.org/
+  2. Clone the repo and open the folder in a terminal.
+  3. Run:  python requirements.py
+  4. Run:  npm run dev
+  5. First time: complete the in-app setup wizard.
+  6. Add Gemini key: Settings → General → Gemini voice core.
+
+  Build installer: npm run build  →  release/JARVIS Setup 1.0.0.exe
+
+--------------------------------------------------------------------------------
+4) VOICE CORE (MAIN AI ON DASHBOARD)
+--------------------------------------------------------------------------------
+
+  Requires a Gemini API key (setup step 3 or Settings → General).
+  See important notes/VOICE-CORE.md for what it can do and latency tips.
+
+  Optional legacy "Hey Jarvis" wake word uses a separate Google Cloud Speech
+  key (Settings → General) — not required if you only use the voice core.
+
+--------------------------------------------------------------------------------
+5) AI CHAT (CLAUDE OR OLLAMA)
+--------------------------------------------------------------------------------
+
+  Settings → AI — separate from the voice core.
+  Claude: Anthropic API key.  Ollama: local models via https://ollama.com/
+
+--------------------------------------------------------------------------------
+6) FEATURES OVERVIEW
+--------------------------------------------------------------------------------
+
+  • Dashboard — Stats, weather, voice core (HUD), presets, widgets
+  • Presets — One-click workspaces (apps + sites + actions)
+  • AI Chat — Claude or Ollama, files, screen capture
+  • Apps — Scan & launch installed programs
+  • Search, Tasks, Network, Processes, Settings
+
+--------------------------------------------------------------------------------
+7) FRESH RESET
+--------------------------------------------------------------------------------
+
+  Settings → About → Reset JARVIS data, then quit and reopen.
+
+  Or delete %AppData%\JARVIS\ while JARVIS is closed.
+
+--------------------------------------------------------------------------------
+8) TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+  • Voice slow or silent → VOICE-CORE.md, check mic, API key, voice language
+  • Apps page slow first time → cached after first scan; use Rescan for full list
+  • AI Chat fails → Settings → AI, check Claude key or Ollama running
+
+================================================================================
+  Created by Mr Arumugam Abinav © All rights reserved
+================================================================================

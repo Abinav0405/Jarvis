@@ -1,0 +1,7 @@
+This file moved to:
+
+  important notes/SETUP-NEW-PC.txt
+
+Also see:
+  important notes/VOICE-CORE.md
+  README.md
