@@ -4,11 +4,16 @@ function buildToolDeclarations() {
   return [
     {
       name: 'open_app',
-      description: 'Open or launch an application on this PC by name.',
+      description:
+        'Open or launch ANY installed Windows application by name — Notepad, Calculator, Spotify, Discord, Photos, Paint, Visual Studio Code, Chrome, etc. Uses Start Menu and installed apps on this PC. Pass the common English name; nicknames like vscode/code work too.',
       parameters: {
         type: 'object',
         properties: {
-          app_name: { type: 'string', description: 'Application name e.g. Chrome, Spotify, Notepad' },
+          app_name: {
+            type: 'string',
+            description:
+              'Application name in English, e.g. Notepad, Spotify, Discord, Calculator, Photos, Cursor, Brave, Visual Studio Code',
+          },
         },
         required: ['app_name'],
       },

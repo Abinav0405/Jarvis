@@ -94,6 +94,7 @@ const sysWin = require('./system-windows');
 const { scanWindowsApps } = require('./scan-windows-apps');
 const jarvisFeatures = require('./jarvis-features');
 const unifiedSearch = require('./unified-search');
+const { resolveAppLaunch } = require('./app-launcher');
 const dashboardExtras = require('./dashboard-extras');
 const { createGeminiLiveHost } = require('./gemini-live-host.js');
 
@@ -403,22 +404,50 @@ function isChatPathAllowed(absPath) {
   return false;
 }
 
+function isUnderSafeLaunchRoot(absPath) {
+  const resolved = path.resolve(absPath).toLowerCase();
+  const winDir = process.env.WINDIR || 'C:\\Windows';
+  const roots = [
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs'),
+    path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'WindowsApps'),
+    path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'Microsoft', 'Windows', 'Start Menu'),
+    path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu'),
+    path.join(os.homedir(), 'Desktop'),
+    path.join(os.homedir(), 'OneDrive', 'Desktop'),
+    path.join(winDir, 'System32'),
+    path.join(winDir, 'SysWOW64'),
+  ].filter(Boolean);
+  for (const root of roots) {
+    const r = path.resolve(root).toLowerCase();
+    if (resolved === r || resolved.startsWith(`${r}${path.sep}`)) return true;
+  }
+  return false;
+}
+
 function isLaunchPathAllowed(launchPath) {
   const p = String(launchPath || '').trim();
   if (!p) return false;
   if (p.toLowerCase().startsWith('uwp:')) {
-    const appId = p.slice(4).toLowerCase();
-    const store = readAppsStoreSync();
-    return (store.apps || []).some((a) => {
-      const lp = String(a.launchPath || '').toLowerCase();
-      return lp === p.toLowerCase() || String(a.appId || '').toLowerCase() === appId;
-    });
+    const appId = p.slice(4).trim();
+    return appId.length > 0 && !appId.includes('..');
   }
-  const resolved = path.resolve(p).toLowerCase();
-  if (trackedExePaths.has(resolved)) return true;
-  return (readAppsStoreSync().apps || []).some(
-    (a) => path.resolve(String(a.launchPath || '')).toLowerCase() === resolved,
-  );
+  let resolved;
+  try {
+    resolved = path.resolve(p);
+  } catch {
+    return false;
+  }
+  const lower = resolved.toLowerCase();
+  if (trackedExePaths.has(lower)) return true;
+  if ((readAppsStoreSync().apps || []).some((a) => path.resolve(String(a.launchPath || '')).toLowerCase() === lower)) {
+    return true;
+  }
+  if (!fs.existsSync(resolved)) return false;
+  const ext = path.extname(resolved).toLowerCase();
+  if (ext !== '.exe' && ext !== '.lnk') return false;
+  return isUnderSafeLaunchRoot(resolved);
 }
 
 function ensureAppsFile() {
@@ -919,6 +948,7 @@ jarvisIpc.register('runtime:switchToDesktopApp', () => {
 });
 jarvisIpc.register('data:write', (_e, data) => {
   writeDataSync(data);
+  emitJarvis('jarvis:data-changed');
   return true;
 });
 
@@ -2016,14 +2046,22 @@ async function executeLiveTool(name, args) {
   const a = args || {};
 
   if (name === 'open_app') {
-    const q = String(a.app_name || '').trim().toLowerCase();
-    if (!q) return 'No app name provided.';
+    const raw = String(a.app_name || '').trim();
+    if (!raw) return 'No app name provided.';
     const store = readAppsStoreSync();
-    const hit =
-      (store.apps || []).find((x) => String(x.name || '').toLowerCase() === q) ||
-      (store.apps || []).find((x) => String(x.name || '').toLowerCase().includes(q));
-    if (!hit?.launchPath) return `Could not find app "${a.app_name}". Scan apps in JARVIS first.`;
-    const r = await jarvisIpc.invoke('apps:launch', null, hit.launchPath);
+    let hit = await resolveAppLaunch(raw, store);
+    if (!hit && !(store.apps || []).length) {
+      try {
+        await jarvisIpc.invoke('apps:scan', null, [{ full: true }]);
+      } catch {
+        /* scan optional */
+      }
+      hit = await resolveAppLaunch(raw, readAppsStoreSync());
+    }
+    if (!hit?.launchPath) {
+      return `Could not find "${raw}" on this PC. Open the Apps page and run Rescan, or say the exact name from Start Menu.`;
+    }
+    const r = await jarvisIpc.invoke('apps:launch', null, [hit.launchPath]);
     return r?.ok ? `Opened ${hit.name}.` : String(r?.error || 'Launch failed');
   }
 
@@ -2066,7 +2104,7 @@ async function executeLiveTool(name, args) {
     if (pct == null) {
       return 'Could not understand the volume level. Ask the user for a number from 0 to 100 (for example 30 for thirty percent).';
     }
-    const r = await jarvisIpc.invoke('system:setVolume', null, pct);
+    const r = await jarvisIpc.invoke('system:setVolume', null, [pct]);
     return r?.ok ? `Volume set to ${r.percent ?? pct}%.` : String(r?.error || 'Volume change failed');
   }
 
@@ -2266,6 +2304,7 @@ jarvisIpc.register('actions:execute', async (_e, action) => {
 });
 
 app.whenReady().then(async () => {
+  try {
   nativeTheme.themeSource = 'dark';
 
   /** Enable speech recognition in Electron by allowing the Google speech service origin. */
@@ -2295,7 +2334,7 @@ app.whenReady().then(async () => {
   /* Desktop-only build: skip local web UI server for faster startup. */
 
   createWindow();
-  startJarvisDevFocusServer();
+  startJarvisFocusServer();
   const data = readDataSync();
   const requested = (data.settings && data.settings.mainHotkey) || 'Control+Shift+Space';
   const registered = registerHotkeys(requested);
@@ -2320,6 +2359,10 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+  } catch (e) {
+    console.error('[Jarvis] Startup failed:', e);
+    dialog.showErrorBox('JARVIS startup error', String(e?.message || e));
+  }
 
   /** Foreground app usage — poll every 20s (PowerShell); attribute elapsed time to previous foreground process. */
   const usagePoll = { lastAt: Date.now(), foregroundName: null };

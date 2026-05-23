@@ -70,6 +70,7 @@ export function SetupWizard({ onComplete }) {
   }, [fontScale]);
 
   const finish = async () => {
+    if (saving) return;
     setSaving(true);
     try {
       const data = await getJarvis().readData();
@@ -92,16 +93,15 @@ export function SetupWizard({ onComplete }) {
         },
       };
       await getJarvis().writeData(next);
-      if (geminiApiKey.trim()) {
-        await getJarvis().geminiSaveApiKey?.(geminiApiKey.trim());
-        await getJarvis().liveStart?.();
+      onComplete?.();
+      if (startOnBoot) {
+        void getJarvis().setStartup(true);
       }
-      if (startOnBoot) await getJarvis().setStartup(true);
     } catch (e) {
       console.error('[SetupWizard] save failed:', e);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    onComplete?.();
   };
 
   const canNext = () => {

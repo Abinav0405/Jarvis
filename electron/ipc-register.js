@@ -26,7 +26,8 @@ async function invoke(channel, event, args = []) {
   if (!fn) {
     throw new Error(`Unknown IPC channel: ${channel}`);
   }
-  return Reflect.apply(fn, null, [event, ...args]);
+  const list = Array.isArray(args) ? args : [args];
+  return Reflect.apply(fn, null, [event, ...list]);
 }
 
 module.exports = { register, invoke };

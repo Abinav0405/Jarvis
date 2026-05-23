@@ -58,8 +58,10 @@ function AppShell() {
   }, [data]);
 
   const handleSetupComplete = useCallback(() => {
-    refresh?.();
-    setPhase(PHASE_READY);
+    window.requestAnimationFrame(() => {
+      setPhase(PHASE_READY);
+      refresh?.();
+    });
   }, [refresh]);
 
   // Stagger the shell entrance when phase becomes ready
