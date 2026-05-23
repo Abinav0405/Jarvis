@@ -59,14 +59,23 @@ function buildToolDeclarations() {
     },
     {
       name: 'set_volume',
-      description: 'Set Windows master volume percent 0-100.',
+      description:
+        'Set Windows master speaker volume. Use ONLY when the user gives a clear number 0-100 (e.g. 30 for "thirty percent"). Do NOT guess from words like "to" or partial phrases. If unsure, ask first.',
       parameters: {
         type: 'object',
         properties: {
-          percent: { type: 'number', description: 'Volume 0-100' },
+          percent: {
+            type: 'number',
+            description: 'Integer 0-100 only, e.g. 30 for thirty percent, 50 for half, 100 for max',
+          },
         },
         required: ['percent'],
       },
+    },
+    {
+      name: 'get_volume',
+      description: 'Read current Windows master volume percent before changing it.',
+      parameters: { type: 'object', properties: {} },
     },
     {
       name: 'save_memory',

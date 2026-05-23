@@ -824,6 +824,11 @@ async function launchPresetInternal(preset, dataSnapshot) {
   if (sa.doNotDisturb && sa.doNotDisturb.enabled) {
     try {
       await sysWin.enableDoNotDisturbLite();
+      const snap = readDataSync();
+      const merged = mergeDefaults(snap);
+      merged.settings = { ...merged.settings, jarvisDnd: true };
+      writeDataSync(merged);
+      emitJarvis('jarvis:data-changed');
     } catch (e) {
       console.error('DND set failed', e);
     }
@@ -1697,9 +1702,14 @@ jarvisIpc.register('weather:searchCities', async (_e, query) => dashboardExtras.
 jarvisIpc.register('weather:detectLocation', async () => dashboardExtras.detectLocation());
 
 jarvisIpc.register('system:toggleDnd', async () => {
-  const on = await dashboardExtras.getDndEnabled();
+  const on = sysWin.isDndJarvisActive();
   if (on) await sysWin.restoreDoNotDisturbLite();
   else await sysWin.enableDoNotDisturbLite();
+  const data = readDataSync();
+  const next = mergeDefaults(data);
+  next.settings = { ...next.settings, jarvisDnd: !on };
+  writeDataSync(next);
+  emitJarvis('jarvis:data-changed');
   return { enabled: !on };
 });
 
@@ -1714,8 +1724,14 @@ jarvisIpc.register('system:getVolume', async () => {
 
 jarvisIpc.register('system:setVolume', async (_e, percent) => {
   try {
-    await sysWin.setMasterVolumePercent(percent);
-    return { ok: true };
+    const { parseVolumePercent } = require('./volume-parse');
+    const p = parseVolumePercent(percent);
+    if (p == null) {
+      return { ok: false, error: 'Invalid volume. Use a number from 0 to 100.' };
+    }
+    await sysWin.setMasterVolumePercent(p);
+    emitJarvis('jarvis:data-changed');
+    return { ok: true, percent: p };
   } catch (e) {
     console.error('[Jarvis] setVolume failed', e);
     return { ok: false, error: String(e && e.message ? e.message : e) };
@@ -2045,9 +2061,18 @@ async function executeLiveTool(name, args) {
   }
 
   if (name === 'set_volume') {
-    const pct = Math.min(100, Math.max(0, Number(a.percent) || 0));
+    const { parseVolumeFromToolArgs } = require('./volume-parse');
+    const pct = parseVolumeFromToolArgs(a);
+    if (pct == null) {
+      return 'Could not understand the volume level. Ask the user for a number from 0 to 100 (for example 30 for thirty percent).';
+    }
     const r = await jarvisIpc.invoke('system:setVolume', null, pct);
-    return r?.ok ? `Volume set to ${pct}%.` : String(r?.error || 'Volume change failed');
+    return r?.ok ? `Volume set to ${r.percent ?? pct}%.` : String(r?.error || 'Volume change failed');
+  }
+
+  if (name === 'get_volume') {
+    const v = await sysWin.getMasterVolumePercent();
+    return v != null ? `Current volume is ${v}%.` : 'Could not read current volume.';
   }
 
   return `Unknown tool: ${name}`;
@@ -2145,6 +2170,13 @@ jarvisIpc.register('app:resetUserData', () => {
 jarvisIpc.register('preset:restoreSystem', async () => {
   try {
     const { killed } = await jarvisFeatures.endPresetSession(sysWin);
+    const snap = readDataSync();
+    const merged = mergeDefaults(snap);
+    if (merged.settings?.jarvisDnd) {
+      merged.settings = { ...merged.settings, jarvisDnd: false };
+      writeDataSync(merged);
+      emitJarvis('jarvis:data-changed');
+    }
     return { ok: true, killed };
   } catch (e) {
     console.error(e);
@@ -2250,6 +2282,15 @@ app.whenReady().then(async () => {
   migratePersistentUserData();
   ensureDataFile();
   ensureAppsFile();
+
+  const bootData = readDataSync();
+  if (bootData.settings?.jarvisDnd) {
+    try {
+      await sysWin.enableDoNotDisturbLite();
+    } catch (e) {
+      console.error('[Jarvis] restore DND on boot failed', e);
+    }
+  }
 
   /* Desktop-only build: skip local web UI server for faster startup. */
 

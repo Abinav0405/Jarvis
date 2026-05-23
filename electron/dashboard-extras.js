@@ -35,9 +35,7 @@ if (-not $b) { @{ percent = $null; charging = $false } | ConvertTo-Json -Compres
 
 async function getDndEnabled() {
   try {
-    const v = await sysWin.readToastEnabled?.();
-    if (v == null) return false;
-    return Number(v) === 0;
+    return !!sysWin.isDndJarvisActive?.();
   } catch {
     return false;
   }

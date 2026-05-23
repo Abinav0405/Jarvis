@@ -86,8 +86,24 @@ ${scriptBody}
 /** Set master output volume (0–100) via Windows Core Audio API. */
 async function setMasterVolumePercent(percent) {
   const p = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-  const cmd = volumePs(`[JarvisAudioVolume]::SetPercent(${p})`);
-  await ps(cmd);
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const cmd = volumePs(`[JarvisAudioVolume]::SetPercent(${p})`);
+      await ps(cmd);
+      await new Promise((r) => setTimeout(r, 100));
+      const got = await getMasterVolumePercent();
+      if (got != null && (Math.abs(got - p) <= 6 || (p === 0 && got <= 3))) return;
+      lastErr = new Error(`Volume verify failed (wanted ${p}%, got ${got}%)`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Volume change failed');
+}
+
+function isDndJarvisActive() {
+  return dndJarvisActive;
 }
 
 async function setDesktopWallpaper(imagePath) {
@@ -184,6 +200,8 @@ module.exports = {
   getMasterVolumePercent,
   getDesktopWallpaper,
   readToastEnabled,
+  writeToastEnabled,
   enableDoNotDisturbLite,
   restoreDoNotDisturbLite,
+  isDndJarvisActive,
 };

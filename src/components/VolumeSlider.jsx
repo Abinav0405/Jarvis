@@ -9,7 +9,7 @@ export function VolumeSlider({ pushToast }) {
   const debounceRef = useRef(null);
   const lastSent = useRef(50);
 
-  useEffect(() => {
+  const syncFromSystem = useCallback(() => {
     getJarvis()
       .getSystemVolume?.()
       .then((r) => {
@@ -21,6 +21,12 @@ export function VolumeSlider({ pushToast }) {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    syncFromSystem();
+    const off = getJarvis().onDataChanged?.(() => syncFromSystem());
+    return typeof off === 'function' ? off : undefined;
+  }, [syncFromSystem]);
 
   const applyVolume = useCallback(
     (percent, quiet) => {
